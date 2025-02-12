@@ -14,11 +14,15 @@ def init_db():
         conn.commit()
 
 def reset_db():
-    """Clears the database before tests"""
+    """Clears the database and resets the ID counter"""
     with sqlite3.connect(DATABASE) as conn:
         cursor = conn.cursor()
-        cursor.execute("DROP TABLE IF EXISTS tracks")  # Deletes the table
-        init_db()  # Recreates the table
+        cursor.execute("DROP TABLE IF EXISTS tracks")  # ✅ Deletes the tracks table
+        cursor.execute("DELETE FROM sqlite_sequence WHERE name='tracks'")  # ✅ Resets ID counter
+        conn.commit()
+        init_db()  # ✅ Recreate the tracks table
+        print("✅ Database has been reset!")
+
         
 
 def add_track_to_db(title, artist, file_path):
