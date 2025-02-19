@@ -11,46 +11,45 @@ def init_db():
                             id INTEGER PRIMARY KEY AUTOINCREMENT,
                             title TEXT NOT NULL,
                             artist TEXT NOT NULL,
-                            file_data TEXT NOT NULL)''')  # ✅ Still stores Base64 files
+                            file_data TEXT NOT NULL)''')  # ✅ Store encrypted Base64 file
         conn.commit()
 
-def add_track_to_db(title, artist, file_path):
-    """Adds a track entry to the database with Base64-encoded file"""
-    try:
-        # ✅ Read and encode the WAV file in Base64
-        with open(file_path, "rb") as file:
-            encoded_file = base64.b64encode(file.read()).decode('utf-8')  # ✅ Convert to Base64 string
-
-        with sqlite3.connect(DATABASE) as conn:
-            cursor = conn.cursor()
-            cursor.execute("INSERT INTO tracks (title, artist, file_data) VALUES (?, ?, ?)",
-                           (title, artist, encoded_file))  # ✅ Store Base64 data
-            conn.commit()
-        print(f"Stored track in database: {title} - {artist} (File stored as Base64)")
-
-    except FileNotFoundError:
-        print(f"Error: File '{file_path}' not found.")
+def add_track_to_db(title, artist, file_data):
+    """Adds a track entry to the database with an encrypted Base64-encoded file"""
+    with sqlite3.connect(DATABASE) as conn:
+        cursor = conn.cursor()
+        cursor.execute("INSERT INTO tracks (title, artist, file_data) VALUES (?, ?, ?)",
+                       (title, artist, file_data))  # ✅ Store Base64 data
+        conn.commit()
+        return cursor.lastrowid  # Return track ID
 
 def get_all_tracks():
     """Retrieves all tracks stored in the database (Excludes encoded file)"""
     with sqlite3.connect(DATABASE) as conn:
         cursor = conn.cursor()
-        cursor.execute("SELECT id, title, artist FROM tracks")  # ✅ No file_data
+        cursor.execute("SELECT id, title, artist FROM tracks")  # ✅ No file_data in query
         tracks = cursor.fetchall()
     
     return [{"id": row[0], "title": row[1], "artist": row[2]} for row in tracks]  # ✅ No file_data
 
-def get_track_by_title(title):
-    """Retrieves a track by title (returns metadata but not file)"""
+def get_track_by_title_artist(title, artist):
+    """Retrieves a track from the database, including Base64 file data"""
     with sqlite3.connect(DATABASE) as conn:
         cursor = conn.cursor()
-        cursor.execute("SELECT title, artist FROM tracks WHERE title = ?", (title,))
+        cursor.execute("SELECT title, file_data FROM tracks WHERE title = ? AND artist = ?", 
+                       (title, artist))
         track = cursor.fetchone()
 
     if track:
-        return {"title": track[0], "artist": track[1]}  # ✅ No file_data
+        return {
+            "title": track[0],
+            "file_data": track[1]  # ✅ Return Base64-encoded file as-is
+        }
     
-    return None
+    return None  # Track not found
+
+    
+
 
 def remove_track_from_db(track_id):
     """Removes a track from the database by its ID"""
