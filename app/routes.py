@@ -6,21 +6,20 @@ routes = Blueprint('routes', __name__)
 
 @routes.route('/tracks', methods=['POST'])
 def add_track():
-    print("Received POST request to /tracks")  # Debug log
+    """Handles adding a track to the database (including file path)"""
+    data = request.get_json()
 
-    data = request.json
-    if not data:
-        print("No data received!")  # Debug log
-        return jsonify({'error': 'No data received'}), 400
+    if not data or "title" not in data or "artist" not in data or "file_path" not in data:
+        return jsonify({"error": "Missing fields"}), 400  # ✅ Now requires "file_path"
 
-    title, artist, file = data.get('title'), data.get('artist'), data.get('file')
+    title = data["title"]
+    artist = data["artist"]
+    file_path = data["file_path"]
 
-    if not title or not artist or not file:
-        print("Missing fields!")  # Debug log
-        return jsonify({'error': 'Missing fields'}), 400
+    # ✅ Store in database
+    add_track_to_db(title, artist, file_path)
 
-    print(f"✅ Adding track: {title} by {artist}")  # Debug log
-    return add_track_to_db(title, artist, file)
+    return jsonify({"message": "Track added successfully"}), 201
 
 
 @routes.route('/tracks', methods=['GET'])

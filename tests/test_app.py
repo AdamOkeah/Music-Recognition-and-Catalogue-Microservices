@@ -10,7 +10,7 @@ class ShamzamTestCase(unittest.TestCase):
     def setUp(self):
         """Set up the test client and reset the database before each test"""
         self.app = create_app().test_client()
-        reset_db()  # ✅ Clears the database before each test
+        reset_db()  #  Clears the database before each test
 
     ## 1️⃣ Happy Path: Add a Track
     def test_add_track(self):
@@ -67,7 +67,7 @@ class ShamzamTestCase(unittest.TestCase):
     ## 6️⃣ Unhappy Path: Recognising Non-Existing File (Now Properly Handled)
     def test_recognise_nonexistent_track(self):
         """Test recognising a non-existent file"""
-        response = self.app.post('/recognise')  # ✅ No file sent
+        response = self.app.post('/recognise')  #  No file sent
         self.assertEqual(response.status_code, 400)
         data = json.loads(response.data)
         self.assertEqual(data['error'], "No file uploaded")
