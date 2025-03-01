@@ -1,6 +1,8 @@
 import base64
 import sqlite3
 from flask import Flask, request, jsonify
+import os 
+import database
 
 app = Flask(__name__)
 DATABASE = "shamzam.db"
@@ -18,53 +20,35 @@ def init_db():
         """)
         conn.commit()
 
-@app.route("/tracks", methods=["POST"])
+
+
+@app.route('/tracks', methods=['POST'])
 def add_track():
     """
-    POST /tracks  (multipart/form-data)
-    Fields required:
-      - title: text
-      - artist: text
-      - file: the uploaded WAV file
-    The server encodes the WAV in base64 and stores it in 'file_data'.
+    Add a full track to the catalogue.
+    Reads the file, encodes it in Base64, and stores the track.
     """
-    # 1) Check for missing fields
-    if "title" not in request.form or "artist" not in request.form or "file" not in request.files:
-        return jsonify({"error": "Missing 'title', 'artist' or 'file'"}), 400
+    data = request.get_json()
+    title = data.get('title')
+    artist = data.get('artist')
+    file_path = data.get('file_path')
 
-    title = request.form["title"]
-    artist = request.form["artist"]
-    file_ = request.files["file"]  # The WAV file
+    if not title or not artist or not file_path:
+        return jsonify({"error": "Missing required fields"}), 400
 
-    try:
-        # 2) Read raw bytes from the uploaded file
-        raw_bytes = file_.read()
-    except Exception as e:
-        # If reading the file fails
-        return jsonify({"error": f"Error reading uploaded file: {e}"}), 400
+    if not os.path.exists(file_path):
+        return jsonify({"error": "Full track file does not exist at provided path"}), 400
 
     try:
-        # 3) Encode the WAV data to base64
-        encoded_wav = base64.b64encode(raw_bytes).decode("utf-8")
+        with open(file_path, "rb") as f:
+            raw_data = f.read()
+            encoded_file = base64.b64encode(raw_data).decode("ascii")
     except Exception as e:
-        return jsonify({"error": f"Error base64-encoding file: {e}"}), 500
+        return jsonify({"error": "Failed to encode file", "details": str(e)}), 500
 
-    # 4) Store the base64-encoded data in the database
-    try:
-        with sqlite3.connect(DATABASE) as conn:
-            cursor = conn.cursor()
-            cursor.execute("""
-                INSERT INTO tracks (title, artist, file_data)
-                VALUES (?, ?, ?)
-            """, (title, artist, encoded_wav))
-            conn.commit()
-            track_id = cursor.lastrowid
-    except Exception as e:
-        return jsonify({"error": f"Database error: {e}"}), 500
-
-    # 5) Success
-    return jsonify({"message": "Track added successfully", "track_id": track_id}), 200
-
+    # Corrected call to your provided database function
+    track_id = database.add_track_to_db(title, artist, encoded_file)
+    return jsonify({"message": "Track added successfully", "track_id": track_id}), 201
 
 @app.route("/tracks", methods=["GET"])
 def list_tracks():
@@ -73,37 +57,38 @@ def list_tracks():
     Returns a JSON array of {id, title, artist}.
     """
     try:
-        with sqlite3.connect(DATABASE) as conn:
-            cursor = conn.cursor()
-            cursor.execute("SELECT id, title, artist FROM tracks")
-            rows = cursor.fetchall()
+        tracks = database.get_all_tracks()  # use database helper
+        return jsonify(tracks), 200
     except Exception as e:
         return jsonify({"error": f"Database error: {e}"}), 500
 
-    result = [{"id": r[0], "title": r[1], "artist": r[2]} for r in rows]
-    return jsonify(result), 200
 
-
-
-@app.route("/tracks/<int:track_id>", methods=["DELETE"])
-def delete_track(track_id):
+@app.route("/tracks", methods=["DELETE"])
+def delete_track():
     """
-    DELETE /tracks/<track_id>
-    Removes a track from the catalogue (by database ID).
-    Returns 200 if removed, or 404 if not found.
+    DELETE /tracks (JSON)
+    {
+        "title": "Song Title",
+        "artist": "Artist Name"
+    }
+    Removes a track from the database by title and artist.
     """
-    # Connect to DB, attempt to delete
-    with sqlite3.connect(DATABASE) as conn:
-        cursor = conn.cursor()
-        cursor.execute("DELETE FROM tracks WHERE id = ?", (track_id,))
-        rows_affected = cursor.rowcount
-        conn.commit()
+    data = request.get_json()
+    title = data.get('title')
+    artist = data.get('artist')
 
-    # rows_affected will be 0 if the track ID didn't exist
-    if rows_affected == 0:
-        return jsonify({"error": f"Track ID {track_id} not found"}), 404
-    else:
-        return jsonify({"message": f"Track ID {track_id} deleted successfully"}), 200
+    if not title or not artist:
+        return jsonify({"error": "Missing 'title' or 'artist'"}), 400
+
+    try:
+        success = database.remove_track_from_db(title, artist)
+
+        if success:
+            return jsonify({"message": f"Track '{title}' by '{artist}' deleted successfully"}), 200
+        else:
+            return jsonify({"error": f"Track '{title}' by '{artist}' not found"}), 404
+    except Exception as e:
+        return jsonify({"error": f"Database error: {e}"}), 500
 
 
 

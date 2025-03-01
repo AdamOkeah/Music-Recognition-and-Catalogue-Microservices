@@ -33,7 +33,7 @@ def get_all_tracks():
     return [{"id": row[0], "title": row[1], "artist": row[2]} for row in tracks]  # ✅ No file_data
 
 def get_track_by_title_artist(title, artist):
-    """Retrieves a track from the database, including Base64 file data"""
+    """Retrieves a track from the database, decoding Base64 file data to raw WAV bytes."""
     with sqlite3.connect(DATABASE) as conn:
         cursor = conn.cursor()
         cursor.execute("SELECT title, file_data FROM tracks WHERE title = ? AND artist = ?", 
@@ -41,28 +41,31 @@ def get_track_by_title_artist(title, artist):
         track = cursor.fetchone()
 
     if track:
+        # Decode Base64 to raw WAV bytes before returning
+        raw_wav_bytes = base64.b64decode(track[1])
         return {
             "title": track[0],
-            "file_data": track[1]  # ✅ Return Base64-encoded file as-is
+            "file_data": raw_wav_bytes
         }
     
     return None  # Track not found
 
+
     
 
 
-def remove_track_from_db(track_id):
+def remove_track_from_db(title, artist):
     """Removes a track from the database by its ID"""
     with sqlite3.connect(DATABASE) as conn:
         cursor = conn.cursor()
-        cursor.execute("DELETE FROM tracks WHERE id = ?", (track_id,))
+        cursor.execute("DELETE FROM tracks WHERE title = ? and artist = ?", (title, artist))
         conn.commit()
 
         if cursor.rowcount > 0:
-            print(f"Track with ID {track_id} removed successfully.")
+            print(f"Track '{title}' by '{artist}' removed successfully.")
             return True
         else:
-            print(f"No track found with ID {track_id}.")
+            print(f"No track found with title '{title}' and artist '{artist}'.")
             return False
 
 def reset_db():
@@ -73,4 +76,4 @@ def reset_db():
         cursor.execute("DELETE FROM sqlite_sequence WHERE name='tracks'")  # Resets ID counter
         conn.commit()
         init_db()  # Recreate the table
-        print("Database has been reset.")
+        
