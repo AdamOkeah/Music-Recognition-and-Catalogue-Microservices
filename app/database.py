@@ -22,6 +22,8 @@ def add_track_to_db(title, artist, file_data):
                        (title, artist, file_data))  # ✅ Store Base64 data
         conn.commit()
         return cursor.lastrowid  # Return track ID
+    
+
 
 def get_all_tracks():
     """Retrieves all tracks stored in the database (Excludes encoded file)"""
@@ -62,10 +64,8 @@ def remove_track_from_db(title, artist):
         conn.commit()
 
         if cursor.rowcount > 0:
-            print(f"Track '{title}' by '{artist}' removed successfully.")
             return True
         else:
-            print(f"No track found with title '{title}' and artist '{artist}'.")
             return False
 
 def reset_db():
@@ -73,7 +73,13 @@ def reset_db():
     with sqlite3.connect(DATABASE) as conn:
         cursor = conn.cursor()
         cursor.execute("DROP TABLE IF EXISTS tracks")  # Deletes the table
-        cursor.execute("DELETE FROM sqlite_sequence WHERE name='tracks'")  # Resets ID counter
+
+        # Wrap the 'delete from sqlite_sequence' in a safe try/except
+        try:
+            cursor.execute("DELETE FROM sqlite_sequence WHERE name='tracks'")  # Resets ID counter
+        except sqlite3.OperationalError:
+            # Silently ignore if sqlite_sequence doesn't exist
+            pass
+
         conn.commit()
         init_db()  # Recreate the table
-        

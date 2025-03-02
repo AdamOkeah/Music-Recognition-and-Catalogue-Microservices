@@ -4,8 +4,14 @@ import requests
 import sqlite3
 import database
 from flask import Flask, request, jsonify
+from dotenv import load_dotenv
 
-AUDD_API_KEY = os.environ.get("AUDD_API_KEY", "64f75deb9ba29f4211ebbb5913d2f52d")
+load_dotenv("api.env")
+
+# Then read the var
+AUDD_KEY = os.environ.get("AUDD_KEY")
+if not AUDD_KEY:
+    raise ValueError("AUDD_API_KEY not set! Provide it in api.env or environment.")
 DATABASE = "shamzam.db"
 
 app = Flask(__name__)
@@ -32,7 +38,7 @@ def recognize_track():
 
         audd_response = requests.post(
             "https://api.audd.io/",
-            data={"api_token": AUDD_API_KEY},
+            data={"api_token": AUDD_KEY},
             files={"file": ("fragment.wav", audio_bytes, "audio/wav")}
         )
         audd_response.raise_for_status()
@@ -57,18 +63,13 @@ def recognize_track():
         file_data_b64 = base64.b64encode(track["file_data"]).decode("utf-8")
 
         return jsonify({
-            "message": "Track recognized and found in the local database!",
-            "recognized_title": recognized_title,
-            "recognized_artist": recognized_artist,
-            "file_format": "wav64",  # Indicating it's a wav64 file
             "file_data_b64": file_data_b64  # Base64 encoded audio
         }), 200
     else:
-        return jsonify({"error": f"Track '{recognized_title}' by '{recognized_artist}' not found"}), 404
-
+        return jsonify({"error": f"Track '{recognized_title}' by '{recognized_artist}' not found"}), 405
 
 
 
 
 if __name__ == "__main__":
-    app.run(port=5001, debug=True)
+    app.run(port=5003, debug=True)
