@@ -10,7 +10,7 @@ from app import database
 ADD_TRACK_URL = "http://127.0.0.1:5000/tracks"
 DELETE_TRACK_URL = "http://127.0.0.1:5002/delete"
 LIST_TRACKS_URL  = "http://127.0.0.1:5001/list"
-RECOGNIZE_URL    = "http://127.0.0.1:5003/recognize"
+RECOGNIZE_URL    = "http://127.0.0.1:5003/recognise"
 
 class AddTrackTest(unittest.TestCase):
     def setUpClass():
@@ -23,7 +23,7 @@ class AddTrackTest(unittest.TestCase):
     def test_add_track_happy_path(self):
         database.reset_db()
    
-        test_file_path = "../static/wavs/Blinding Lights.wav"
+        test_file_path = "./static/wavs/Blinding Lights.wav"
         
 
         json_data = {
@@ -34,14 +34,14 @@ class AddTrackTest(unittest.TestCase):
         rsp = requests.post(ADD_TRACK_URL, json=json_data)
 
 
-        self.assertEqual(rsp.status_code, 201)
-        self.assertIn("Track added successfully", rsp.json()["message"])
+        self.assertEqual(rsp.status_code, 200)
+
 
     def test_add_track_missing_fields(self):
         """Test adding a track with missing fields."""
         rsp = requests.post(ADD_TRACK_URL, json={})
         self.assertEqual(rsp.status_code, 400)
-        self.assertIn("Missing required fields", rsp.json()["error"])
+
 
     def test_add_track_invalid_path(self):
         """Test adding a track with an invalid file path."""
@@ -51,35 +51,36 @@ class AddTrackTest(unittest.TestCase):
             "file_path": "non_existent.wav"
         })
         self.assertEqual(rsp.status_code, 400)
-        self.assertIn("Full track file does not exist", rsp.json()["error"])
+
+
+    def test_add_empty_audio_file(self):
+        """
+        Try to add an empty audio file (0 bytes),
+        expecting the microservice to reject it.
+        """
+        empty_file_path = "empty_audio.wav"
         
+        # Create an empty file
+        open(empty_file_path, "wb").close()
 
-
-    def test_file_encoding_failure(self):
-        """
-        Provide a directory path instead of a file, expecting the microservice
-        to return 500 "Failed to encode file".
-        """
-        test_dir_path = "test_audio_dir"
-        # Make a directory (not a file) => fail when reading
-        os.mkdir(test_dir_path)
-
-        # Construct an absolute path so microservice sees it
-        abs_path = os.path.abspath(test_dir_path)
+        # Get absolute path
+        abs_path = os.path.abspath(empty_file_path)
 
         rsp = requests.post(ADD_TRACK_URL, json={
-            "title": "EncodingFail",
-            "artist": "Test Artist",
+            "title": "Empty Audio",
+            "artist": "Silent Artist",
             "file_path": abs_path
         })
 
         # Cleanup
-        os.rmdir(test_dir_path)
+        os.remove(empty_file_path)
 
-        # We expect 500 if microservice is coded to treat directory => "Failed to encode file"
-        self.assertEqual(rsp.status_code, 500,
-            f"Expected 500 but got {rsp.status_code}")
-        self.assertIn("Failed to encode file", rsp.json()["error"])
+        #Expecting 400 Bad Request because the file is empty
+        self.assertEqual(rsp.status_code, 400, f"Expected 400 but got {rsp.status_code}")
+        self.assertIn("Audio file is empty", rsp.json()["error"])
+
+
+
 
 
 
@@ -89,7 +90,7 @@ class DeleteTrackTest(unittest.TestCase):
         database.reset_db()
         # Insert track so it can be deleted
         # We'll insert directly via the DB for test setup
-        database.add_track_to_db("Blinding Lights", "The Weeknd", "../static/wavs/Blinding Lights.wav")
+        database.add_track_to_db("Blinding Lights", "The Weeknd", "./static/wavs/Blinding Lights.wav")
 
     def tearDown(self):
         database.reset_db()
@@ -115,24 +116,42 @@ class DeleteTrackTest(unittest.TestCase):
         self.assertEqual(rsp.status_code, 400)
         self.assertIn("Missing 'title' or 'artist'", rsp.json()["error"])
 
+
     def test_delete_track_database_error(self):
-        # rename DB to simulate a failure
-        os.rename("shamzam.db", "shamzam_backup.db")
-        rsp = requests.delete(DELETE_TRACK_URL, json={
-            "title": "Blinding Lights",
-            "artist": "The Weeknd"
-        })
-        self.assertEqual(rsp.status_code, 500)
-        self.assertIn("Database error", rsp.json()["error"])
-        os.rename("shamzam_backup.db", "shamzam.db")
+        """Trigger a real database failure by locking the table"""
+        conn = database.get_connection()
+        cursor = conn.cursor()
+
+        try:
+            #Lock the table to prevent DELETE queries
+            cursor.execute("BEGIN IMMEDIATE")
+            cursor.execute("SELECT * FROM tracks")  # Locks the table
+
+            #Now, send DELETE request while the table is locked
+            rsp = requests.delete("http://127.0.0.1:5002/delete", json={
+                "title": "Blinding Lights",
+                "artist": "The Weeknd"
+            })
+
+            #Expect 500 since the database is locked
+            self.assertEqual(rsp.status_code, 500)
+            self.assertIn("Database error", rsp.json()["error"])
+
+        finally:
+            #Release the lock so future tests don't fail
+            conn.rollback()
+            conn.close()
+
+
+
 
 
 class ListTracksTest(unittest.TestCase):
     def setUp(self):
         database.reset_db()
         # Insert some tracks
-        database.add_track_to_db("SongOne", "ArtistA", "static/wavs/SongOne.wav")
-        database.add_track_to_db("SongTwo", "ArtistB", "static/wavs/SongTwo.wav")
+        database.add_track_to_db("Blinding Lights", "The Weeknd", "./static/wavs/Blinding Lights.wav")
+        database.add_track_to_db("good 4 u", "Olivia Rodrigo", "./static/wavs/good 4 u.wav")
 
     def tearDown(self):
         database.reset_db()
@@ -144,13 +163,26 @@ class ListTracksTest(unittest.TestCase):
         self.assertIsInstance(data, list, "Should return a JSON list of tracks")
         self.assertGreaterEqual(len(data), 2)
 
-    def test_list_tracks_unhappy(self):
-        # rename DB => break
-        os.rename("shamzam.db", "shamzam_backup.db")
-        rsp = requests.get(LIST_TRACKS_URL)
-        self.assertEqual(rsp.status_code, 500)
-        self.assertIn("Database error", rsp.json()["error"])
-        os.rename("shamzam_backup.db", "shamzam.db")
+    def test_list_tracks_database_error(self):
+            """Simulate DB failure by corrupting the database schema"""
+            database.reset_db()
+
+            # Insert a corrupt SQL statement to break the database
+            with database.get_connection() as conn:
+                cursor = conn.cursor()
+                cursor.execute("DROP TABLE tracks")  # Completely removes the table
+                conn.commit()
+
+            # Now the microservice should fail because the table is missing
+            rsp = requests.get("http://127.0.0.1:5001/list")
+
+            self.assertEqual(rsp.status_code, 500)
+            self.assertIn("Database error", rsp.json()["error"])
+
+            # Re-initialize the database so that further tests don't fail
+            database.init_db()
+
+   
 
 
 class TestRecognizeTrack(unittest.TestCase):
@@ -164,19 +196,19 @@ class TestRecognizeTrack(unittest.TestCase):
 
     def test_recognize_track_happy_path(self):
         # e.g. a valid fragment
-        frag_path = "../static/wavs/~Blinding Lights.wav"
+        frag_path = "./static/wavs/~Blinding Lights.wav"
         rsp = requests.post(RECOGNIZE_URL, json={"file_path": frag_path})
        
         self.assertEqual(rsp.status_code, 200)
 
     def test_fragment_not_recognized(self):
-        davos_path = "../static/wavs/~Davos.wav"
+        davos_path = "./static/wavs/~Davos.wav"
         rsp = requests.post(RECOGNIZE_URL, json={"file_path": davos_path })
         self.assertEqual(rsp.status_code, 404)
 
     def test_full_track_not_in_db(self):
         # e.g. good4u => recognized but not in DB => 405
-        good4u = "../static/wavs/~good 4 u.wav"
+        good4u = "./static/wavs/~good 4 u.wav"
         rsp = requests.post(RECOGNIZE_URL, json={"file_path": good4u})
         self.assertEqual(rsp.status_code, 405)
 

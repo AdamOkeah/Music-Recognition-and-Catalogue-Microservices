@@ -9,11 +9,11 @@ DATABASE = "shamzam.db"
 @app.route("/list", methods=["GET"])
 def list_tracks():
     """
-    GET /tracks
+    GET /list
     Returns a JSON array of {id, title, artist}.
     """
     try:
-        tracks = database.get_all_tracks()  # use database helper
+        tracks = database.get_all_tracks() 
         return jsonify(tracks), 200
     except Exception as e:
         return jsonify({"error": f"Database error: {e}"}), 500
